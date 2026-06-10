@@ -17,6 +17,16 @@ WARN="${RL_GUARD_WARN:-80}"
 RESET="${RL_GUARD_RESET:-12:00 BRT}"
 STALE_MIN="${RL_GUARD_STALE_MIN:-10}"
 
+# Emit a PreToolUse hookSpecificOutput envelope. $1=decision ("ask"|""),
+# $2=reason (only used when decision is non-empty). JSON is hand-built with
+# printf so jq stays a soft dependency. Reason is escaped for backslash + quote.
+emit_decision() {
+    local reason="${2:-}"
+    reason="${reason//\\/\\\\}"
+    reason="${reason//\"/\\\"}"
+    printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"%s","permissionDecisionReason":"%s"}}\n' "$1" "$reason"
+}
+
 # Fail-open: no cache → allow.
 if [ ! -f "$CACHE_FILE" ]; then
     exit 0
@@ -35,19 +45,8 @@ case "$PCT" in
 esac
 
 if [ "$PCT" -ge "$THRESHOLD" ]; then
-    printf '⚠️  DAILY LIMIT CRITICAL — %s%%\n\n' "$PCT"
-    printf 'Você já usou %s%% do limite diário do Claude Code.\n' "$PCT"
-    printf 'O reset é às %s.\n\n' "$RESET"
-    cat << 'EOF'
-Antes de criar esta task, PERGUNTE ao usuário se deve prosseguir ou parar.
-
-Opções para o usuário:
-- "Sim, continua" → prossiga normalmente
-- "Não, para por aqui" → cancele a task e encerre
-
-Use a ferramenta AskUserQuestion para perguntar.
-EOF
-    exit 2
+    emit_decision "ask" "⚠️ Limite diário do Claude Code em ${PCT}% (reset às ${RESET}). Criar esta task mesmo assim?"
+    exit 0
 fi
 
 exit 0
