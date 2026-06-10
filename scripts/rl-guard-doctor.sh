@@ -38,9 +38,15 @@ fi
 
 heading "CACHE"
 CACHE_FILE="/tmp/claude_rl_pct"
+STALE_MIN="${RL_GUARD_STALE_MIN:-10}"
 if [ -f "$CACHE_FILE" ]; then
   PCT=$(cat "$CACHE_FILE" 2>/dev/null || echo "0")
   echo "$PCT" | grep -qE '^[0-9]+$' && ok "Cache: $PCT%" || warn "Cache: non-numeric ($PCT)"
+  if [ -n "$(find "$CACHE_FILE" -mmin +"$STALE_MIN" 2>/dev/null)" ]; then
+    warn "Cache stale (mtime > ${STALE_MIN}min) — guard fails open until refreshed"
+  else
+    ok "Cache fresh (≤ ${STALE_MIN}min)"
+  fi
 else
   warn "Cache missing — guard always passes"
 fi
@@ -48,6 +54,10 @@ fi
 heading "CONFIG"
 THRESHOLD="${RL_GUARD_THRESHOLD:-90}"
 echo "$THRESHOLD" | grep -qE '^[0-9]+$' && ok "Threshold: $THRESHOLD%" || warn "Threshold non-numeric: $THRESHOLD"
+WARN_PCT="${RL_GUARD_WARN:-80}"
+echo "$WARN_PCT" | grep -qE '^[0-9]+$' && ok "Warn tier: $WARN_PCT%" || warn "Warn non-numeric: $WARN_PCT"
+ok "Reset copy: ${RL_GUARD_RESET:-12:00 BRT}"
+ok "Staleness window: ${STALE_MIN}min"
 
 heading "DEPENDENCIES"
 command -v jq &>/dev/null && ok "jq available" || warn "jq not found — guard will still work (agent_id check skipped)"
@@ -61,13 +71,36 @@ else
 fi
 
 heading "FUNCTIONAL TEST"
-TEST_OUT=$(echo '{"tool_name":"Task","tool_input":{},"agent_id":""}' | bash "$ROOT/scripts/rate-limit-guard.sh" 2>/dev/null; echo $?)
-GUARD_EXIT=$(echo "$TEST_OUT" | tail -1)
-if [ "$GUARD_EXIT" = "2" ] || [ "$GUARD_EXIT" = "0" ]; then
-  ok "Guard responds: exit $GUARD_EXIT"
+# Seed a fresh above-threshold cache and assert the block path: exit 0 + JSON
+# with permissionDecision="ask". Back up any real cache and restore it after.
+BACKUP=""
+if [ -f "$CACHE_FILE" ]; then BACKUP="$(mktemp)"; cp "$CACHE_FILE" "$BACKUP"; fi
+printf '%s' "$((THRESHOLD + 5))" > "$CACHE_FILE"
+
+GUARD_OUT=$(echo '{"tool_name":"Task","tool_input":{},"agent_id":""}' | bash "$ROOT/scripts/rate-limit-guard.sh" 2>/dev/null)
+GUARD_EXIT=$?
+
+if [ "$GUARD_EXIT" = "0" ]; then
+  ok "Guard exit 0 on block (native ask path)"
 else
-  warn "Guard returned unexpected exit: $GUARD_EXIT"
+  fail "Guard exit $GUARD_EXIT on block (expected 0)"
 fi
+
+# JSON shape check: jq if present, grep fallback (keeps grep|sed|bash contract).
+if command -v jq >/dev/null 2>&1; then
+  if echo "$GUARD_OUT" | jq -e '.hookSpecificOutput.permissionDecision=="ask"' >/dev/null 2>&1; then
+    ok "Block emits valid JSON permissionDecision=ask"
+  else
+    fail "Block JSON missing permissionDecision=ask"
+  fi
+else
+  echo "$GUARD_OUT" | grep -q '"permissionDecision":"ask"' \
+    && ok "Block emits permissionDecision=ask (grep; jq absent)" \
+    || warn "permissionDecision=ask not found (jq absent, best-effort)"
+fi
+
+# Restore / clean up — never leave a seeded cache behind.
+if [ -n "$BACKUP" ]; then mv "$BACKUP" "$CACHE_FILE"; else rm -f "$CACHE_FILE"; fi
 
 heading "SUMMARY"
 TOTAL=$((PASS+WARN+FAIL))
