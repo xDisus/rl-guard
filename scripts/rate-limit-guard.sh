@@ -27,6 +27,15 @@ emit_decision() {
     printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"%s","permissionDecisionReason":"%s"}}\n' "$1" "$reason"
 }
 
+# Emit a context-only envelope (no permissionDecision → normal permission flow
+# is untouched; Claude just sees the nudge). $1=context string, escaped.
+emit_context() {
+    local ctx="${1:-}"
+    ctx="${ctx//\\/\\\\}"
+    ctx="${ctx//\"/\\\"}"
+    printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"%s"}}\n' "$ctx"
+}
+
 # Fail-open: no cache → allow.
 if [ ! -f "$CACHE_FILE" ]; then
     exit 0
@@ -46,6 +55,11 @@ esac
 
 if [ "$PCT" -ge "$THRESHOLD" ]; then
     emit_decision "ask" "⚠️ Limite diário do Claude Code em ${PCT}% (reset às ${RESET}). Criar esta task mesmo assim?"
+    exit 0
+fi
+
+if [ "$PCT" -ge "$WARN" ]; then
+    emit_context "Atenção: limite diário do Claude Code em ${PCT}% (bloqueio em ${THRESHOLD}%). Seja econômico — evite tasks desnecessárias."
     exit 0
 fi
 
