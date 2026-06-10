@@ -1,0 +1,28 @@
+{
+  "name": "rl-guard",
+  "version": "1.0.0",
+  "description": "Claude Code rate limit guard — blocks new tasks when daily usage exceeds threshold",
+  "author": "Renan Clementino",
+  "license": "MIT",
+  "bin": {
+    "rl-guard": "./bin/install.sh"
+  },
+  "files": [
+    "plugin.json",
+    "hooks/",
+    "scripts/",
+    "commands/",
+    "bin/",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": ["claude-code", "plugin", "rate-limit", "guard", "claude"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xDisus/rl-guard.git"
+  },
+  "bugs": {
+    "url": "https://github.com/xDisus/rl-guard/issues"
+  },
+  "homepage": "https://github.com/xDisus/rl-guard#readme"
+}

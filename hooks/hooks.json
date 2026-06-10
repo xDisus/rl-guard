@@ -1,0 +1,13 @@
+{
+  "PreToolUse": [
+    {
+      "matcher": "Task",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/rate-limit-guard.sh\""
+        }
+      ]
+    }
+  ]
+}
