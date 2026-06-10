@@ -101,6 +101,7 @@ echo '{"tool_name":"Task","tool_input":{},"agent_id":""}' \
   | ~/.claude/plugins/rl-guard/scripts/rate-limit-guard.sh
 # stdout: {"hookSpecificOutput":{...,"permissionDecision":"ask",...}}  | exit 0
 rm /tmp/claude_rl_pct
+```
 
 ## Estrutura
 
