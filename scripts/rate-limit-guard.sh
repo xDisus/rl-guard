@@ -17,23 +17,24 @@ WARN="${RL_GUARD_WARN:-80}"
 RESET="${RL_GUARD_RESET:-12:00 BRT}"
 STALE_MIN="${RL_GUARD_STALE_MIN:-10}"
 
-# Emit a PreToolUse hookSpecificOutput envelope. $1=decision ("ask"|""),
-# $2=reason (only used when decision is non-empty). JSON is hand-built with
-# printf so jq stays a soft dependency. Reason is escaped for backslash + quote.
+# Minimal JSON string escape (backslash + double-quote). Reason/context copy is
+# controlled and single-line, so this is sufficient to keep jq a soft dependency.
+json_escape() {
+    local s="${1:-}"
+    s="${s//\\/\\\\}"
+    printf '%s' "${s//\"/\\\"}"
+}
+
+# Emit a PreToolUse hookSpecificOutput envelope with a permission decision.
+# $1=decision ("ask"), $2=reason shown to the user.
 emit_decision() {
-    local reason="${2:-}"
-    reason="${reason//\\/\\\\}"
-    reason="${reason//\"/\\\"}"
-    printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"%s","permissionDecisionReason":"%s"}}\n' "$1" "$reason"
+    printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"%s","permissionDecisionReason":"%s"}}\n' "$1" "$(json_escape "$2")"
 }
 
 # Emit a context-only envelope (no permissionDecision → normal permission flow
-# is untouched; Claude just sees the nudge). $1=context string, escaped.
+# is untouched; Claude just sees the nudge). $1=context string.
 emit_context() {
-    local ctx="${1:-}"
-    ctx="${ctx//\\/\\\\}"
-    ctx="${ctx//\"/\\\"}"
-    printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"%s"}}\n' "$ctx"
+    printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"%s"}}\n' "$(json_escape "$1")"
 }
 
 # Fail-open: no cache → allow.
