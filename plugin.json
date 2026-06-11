@@ -1,5 +1,5 @@
 {
   "name": "rl-guard",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Rate limit guard — blocks new tasks when Claude Code daily usage exceeds threshold. Asks user before proceeding."
 }
