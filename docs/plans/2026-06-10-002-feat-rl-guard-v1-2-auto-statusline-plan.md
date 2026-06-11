@@ -1,7 +1,7 @@
 ---
 title: "feat: rl-guard v1.2 automatic statusline producer + safe auto-wire"
 type: feat
-status: active
+status: completed
 created: 2026-06-10
 depth: standard
 ---
