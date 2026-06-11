@@ -70,6 +70,16 @@ else
   warn "settings.json not found"
 fi
 
+heading "STATUSLINE PRODUCER"
+PRODUCER="$ROOT/scripts/statusline-producer.sh"
+[ -f "$PRODUCER" ] && [ -x "$PRODUCER" ] && ok "Producer script executable" || warn "Producer missing/not executable — cache won't auto-populate"
+if [ -f "$SETTINGS" ]; then
+  grep -q 'statusline-producer.sh' "$SETTINGS" 2>/dev/null \
+    && ok "statusLine wired to producer (cache auto-populates)" \
+    || warn "statusLine not wired — run bin/install.sh (or wire manually) for automatic operation"
+fi
+[ -f "$ROOT/.statusline-inner" ] && ok "Composing with your prior statusLine (sidecar present)" || true
+
 heading "FUNCTIONAL TEST"
 # Seed a fresh above-threshold cache and assert the block path: exit 0 + JSON
 # with permissionDecision="ask". Back up any real cache and restore it after.

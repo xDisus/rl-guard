@@ -7,6 +7,9 @@ Quando o limite está crítico (≥90%), o plugin faz o Claude Code **perguntar 
 ## Como funciona
 
 ```
+statusLine ─┐  rate_limits oficial → max(5h,7d) → /tmp/claude_rl_pct
+(produtor)  │                                            │
+            ▼                                            ▼
 ┌─────────────┐     ┌───────────────────────┐     ┌───────────────────────────────┐
 │ TaskCreate  │ →   │ rl-guard (PreToolUse)  │ →   │ ≥ 90% → prompt nativo ("ask") │
 │ (agente     │     │ lê /tmp/claude_rl_pct  │     │ ≥ 80% → nudge "economize"     │
@@ -22,23 +25,17 @@ Quando o limite está crítico (≥90%), o plugin faz o Claude Code **perguntar 
 
 > **Nota:** o bloqueio agora usa o JSON nativo `permissionDecision:"ask"` (não mais `exit 2`). Requer uma versão do Claude Code que suporte os quatro resultados do `PreToolUse`. Em versões antigas o envelope é ignorado (fail-open).
 
-## Pré-requisitos
+## Automático (out-of-box)
 
-O plugin depende de um cache `/tmp/claude_rl_pct` com o percentual usado do limite diário. **O plugin não cria esse arquivo** — você precisa de um produtor que o popule (ex: via `statusLine.command` no `settings.json`). Sem ele, o guard é um no-op (fail-open).
+A partir da v1.2 o plugin **funciona sozinho** — zero configuração. O `bin/install.sh` instala um produtor (`scripts/statusline-producer.sh`) e o liga como sua `statusLine`. Esse produtor lê o campo **oficial** `rate_limits.{five_hour,seven_day}.used_percentage` que o Claude Code já envia para a statusline, pega o `max` das duas janelas (arredondado), e escreve o inteiro em `/tmp/claude_rl_pct` — o cache que o guard consome. Nada de `ccusage`, estimativa, ou fonte sua.
 
-Há um exemplo pronto em [`examples/statusline-writer.sh`](examples/statusline-writer.sh) — copie, adapte a fonte do percentual (a origem do número é sua: `ccusage`, `/usage`, seu próprio medidor…) e aponte seu `settings.json` para ele:
+**Preserva sua barra.** Se você já tem uma `statusLine`, o install **não sobrescreve**: ele guarda seu comando atual num sidecar (`~/.claude/plugins/rl-guard/.statusline-inner`), e o produtor o executa por baixo, repassando o stdin e imprimindo a saída dele igualzinha. Sua barra continua aparecendo; o produtor só adiciona a escrita do cache.
 
-```json
-{
-  "statusLine": {
-    "type": "command",
-    "command": "/caminho/para/statusline-writer.sh",
-    "padding": 0
-  }
-}
-```
+**Seguro e reversível.** O install faz backup do `settings.json` (`~/.claude/settings.json.rl-guard.bak`) antes de mexer, é idempotente (rodar de novo não duplica nada), e `bin/uninstall.sh` desfaz tudo — restaura sua `statusLine` original (ou remove a nossa se não havia uma) e desliga o plugin.
 
-O contrato é simples: escrever um inteiro `0-100` (ex: `73`) em `/tmp/claude_rl_pct`, atualizado com frequência suficiente para não ficar stale (ver `RL_GUARD_STALE_MIN`).
+**Fail-open quando não há `rate_limits`.** Em planos/versões que não emitem o campo (API/console, Claude Code antigo), o produtor **não escreve nada** — o cache fica stale e o guard libera (no-op), exatamente como antes. A barra continua renderizando normalmente.
+
+> **Requer `jq`** para o auto-wire (edição segura de JSON aninhado). Sem `jq`, o install não mexe no `settings.json` e imprime as instruções para você ligar a `statusLine` manualmente.
 
 ## Instalação
 
@@ -111,12 +108,16 @@ rm /tmp/claude_rl_pct
 ├── hooks/hooks.json               — Registro do hook PreToolUse
 ├── scripts/
 │   ├── rate-limit-guard.sh        — Script principal do guard
+│   ├── statusline-producer.sh     — Produtor: lê rate_limits oficial → cache
 │   ├── rl-guard-doctor.sh         — Script de diagnóstico
-│   └── test.sh                    — Matriz de testes comportamentais
+│   ├── test.sh                    — Matriz de testes do guard
+│   └── test-statusline.sh         — Matriz de testes do produtor + wiring
+├── bin/
+│   ├── install.sh                 — Instala + liga statusLine (preserva a sua)
+│   └── uninstall.sh               — Desfaz o wiring (reversível)
 ├── commands/
 │   └── rl-guard-doctor.md         — Slash command /rl-guard-doctor
-├── examples/
-│   └── statusline-writer.sh       — Produtor de cache opt-in (exemplo)
+├── .statusline-inner              — Sidecar: seu comando statusLine original
 ├── README.md
 ├── LICENSE
 └── package.json
