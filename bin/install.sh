@@ -15,15 +15,34 @@ done
 
 chmod +x "$PLUGIN_DIR/scripts/"*.sh 2>/dev/null || true
 
-# Enable in settings.json if not already
+# Enable in settings.json (idempotent, JSON-safe)
 SETTINGS="$HOME/.claude/settings.json"
-if [ -f "$SETTINGS" ]; then
-  if ! grep -q '"rl-guard"' "$SETTINGS" 2>/dev/null; then
-    # Simple insert before the last closing brace
-    sed -i 's|\([[:space:]]*\)\(}\)$|\1  "enabledPlugins": {\n\1    "rl-guard": true\n\1  },\n\1}|' "$SETTINGS" 2>/dev/null || true
-    echo "  ✅ Enabled in settings.json"
-  else
+if command -v jq >/dev/null 2>&1; then
+  # jq path: merge enabledPlugins["rl-guard"]=true without clobbering other keys
+  [ -f "$SETTINGS" ] || echo '{}' > "$SETTINGS"
+  if jq -e '.enabledPlugins["rl-guard"] == true' "$SETTINGS" >/dev/null 2>&1; then
     echo "  ℹ️  Already enabled in settings.json"
+  else
+    TMP="$(mktemp)"
+    if jq '.enabledPlugins["rl-guard"] = true' "$SETTINGS" > "$TMP" 2>/dev/null; then
+      mv "$TMP" "$SETTINGS"
+      echo "  ✅ Enabled in settings.json"
+    else
+      rm -f "$TMP"
+      echo "  ⚠️  Could not edit settings.json — add manually:"
+      echo '      "enabledPlugins": { "rl-guard": true }'
+    fi
+  fi
+else
+  # No jq: only safe to write a fresh file; never hand-edit existing JSON
+  if [ ! -f "$SETTINGS" ]; then
+    printf '{\n  "enabledPlugins": {\n    "rl-guard": true\n  }\n}\n' > "$SETTINGS"
+    echo "  ✅ Created settings.json with rl-guard enabled"
+  elif grep -q '"rl-guard"' "$SETTINGS" 2>/dev/null; then
+    echo "  ℹ️  Already enabled in settings.json"
+  else
+    echo "  ⚠️  jq not found — enable manually in $SETTINGS:"
+    echo '      "enabledPlugins": { "rl-guard": true }'
   fi
 fi
 
