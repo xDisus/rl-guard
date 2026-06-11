@@ -46,6 +46,38 @@ else
   fi
 fi
 
+# Auto-wire the statusLine producer so the guard works out-of-box (idempotent,
+# jq-gated, composes with any existing statusLine instead of clobbering it).
+PRODUCER="$PLUGIN_DIR/scripts/statusline-producer.sh"
+SIDECAR="$PLUGIN_DIR/.statusline-inner"
+BACKUP="$HOME/.claude/settings.json.rl-guard.bak"
+if command -v jq >/dev/null 2>&1; then
+  [ -f "$SETTINGS" ] || echo '{}' > "$SETTINGS"
+  CUR=$(jq -r '.statusLine.command // ""' "$SETTINGS" 2>/dev/null || echo "")
+  if [ "$CUR" = "$PRODUCER" ]; then
+    echo "  ℹ️  statusLine already wired to rl-guard producer"
+  else
+    cp "$SETTINGS" "$BACKUP"
+    # Preserve any existing (non-ours) command as the chained inner statusLine.
+    if [ -n "$CUR" ]; then
+      printf '%s' "$CUR" > "$SIDECAR"
+      echo "  ✅ Preserved your statusLine as inner command (sidecar)"
+    fi
+    TMP="$(mktemp)"
+    if jq --arg cmd "$PRODUCER" '.statusLine = {type:"command", command:$cmd, padding:0}' "$SETTINGS" > "$TMP" 2>/dev/null; then
+      mv "$TMP" "$SETTINGS"
+      echo "  ✅ statusLine wired to producer (backup: $BACKUP)"
+    else
+      rm -f "$TMP"
+      echo "  ⚠️  Could not edit statusLine — add manually:"
+      echo "      \"statusLine\": { \"type\":\"command\", \"command\":\"$PRODUCER\", \"padding\":0 }"
+    fi
+  fi
+else
+  echo "  ⚠️  jq not found — wire the statusLine manually in $SETTINGS:"
+  echo "      \"statusLine\": { \"type\": \"command\", \"command\": \"$PRODUCER\", \"padding\": 0 }"
+fi
+
 echo ""
 echo "✅ rl-guard installed at:"
 echo "   $PLUGIN_DIR"
