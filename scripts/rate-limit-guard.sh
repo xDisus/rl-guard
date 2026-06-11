@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Rate Limit Guard — blocks Task tool calls when daily limit > threshold
-# Requires: /tmp/claude_rl_pct (cached by a statusline producer; see examples/)
+# Requires: /tmp/claude_rl_pct (written by scripts/statusline-producer.sh)
 set -eu
 
 INPUT=$(cat)

@@ -1,6 +1,6 @@
 {
   "name": "rl-guard",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Claude Code rate limit guard — blocks new tasks when daily usage exceeds threshold",
   "author": "Renan Clementino",
   "license": "MIT",
@@ -12,7 +12,6 @@
     "hooks/",
     "scripts/",
     "commands/",
-    "examples/",
     "bin/",
     "README.md",
     "LICENSE"
