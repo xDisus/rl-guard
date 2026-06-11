@@ -55,12 +55,12 @@ case "$PCT" in
 esac
 
 if [ "$PCT" -ge "$THRESHOLD" ]; then
-    emit_decision "ask" "⚠️ Limite diário do Claude Code em ${PCT}% (reset às ${RESET}). Criar esta task mesmo assim?"
+    emit_decision "ask" "⚠️ Claude Code daily limit at ${PCT}% (resets at ${RESET}). Create this task anyway?"
     exit 0
 fi
 
 if [ "$PCT" -ge "$WARN" ]; then
-    emit_context "Atenção: limite diário do Claude Code em ${PCT}% (bloqueio em ${THRESHOLD}%). Seja econômico — evite tasks desnecessárias."
+    emit_context "Heads up: Claude Code daily limit at ${PCT}% (blocks at ${THRESHOLD}%). Be economical — avoid unnecessary tasks."
     exit 0
 fi
 

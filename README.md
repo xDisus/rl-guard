@@ -1,128 +1,182 @@
-# rl-guard 🛡️
+<p align="center">
+  <img src="https://em-content.zobj.net/source/apple/391/shield_1f6e1-fe0f.png" width="120" />
+</p>
 
-**Rate Limit Guard** — plugin do Claude Code que bloqueia criação de novas tasks quando o limite diário de uso ultrapassa o threshold configurado.
+<h1 align="center">rl-guard</h1>
 
-Quando o limite está crítico (≥90%), o plugin faz o Claude Code **perguntar a você** antes de prosseguir — via prompt nativo, sem depender do modelo obedecer. Entre 80% e 90% ele apenas avisa o Claude para economizar.
+<p align="center">
+  <strong>hit the brakes before Claude hits the wall</strong>
+</p>
 
-## Como funciona
+<p align="center">
+  <a href="https://github.com/xDisus/rl-guard/stargazers"><img src="https://img.shields.io/github/stars/xDisus/rl-guard?style=flat&color=yellow" alt="Stars"></a>
+  <a href="https://github.com/xDisus/rl-guard/commits/main"><img src="https://img.shields.io/github/last-commit/xDisus/rl-guard?style=flat" alt="Last Commit"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/xDisus/rl-guard?style=flat" alt="License"></a>
+  <img src="https://img.shields.io/badge/runtime-pure%20bash-89e051?style=flat" alt="Pure Bash">
+  <img src="https://img.shields.io/badge/deps-jq%20(soft)-blue?style=flat" alt="Soft deps">
+</p>
+
+<p align="center">
+  <a href="#the-problem">The Problem</a> •
+  <a href="#install">Install</a> •
+  <a href="#what-you-get">What You Get</a> •
+  <a href="#how-it-works">How It Works</a> •
+  <a href="#configuration">Configuration</a>
+</p>
+
+---
+
+A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) plugin that puts a **circuit breaker** on your daily rate limit. When usage crosses a threshold, it makes Claude Code **stop and ask you** before spawning more work — natively, no dependence on the model behaving. Pure Bash. Zero build. **Works out-of-box with zero config.**
+
+## The Problem
+
+<table>
+<tr>
+<td width="50%">
+
+### 😵 Without rl-guard
+
+> You're deep in a multi-agent run. Claude keeps fanning out tasks. At task #14 you slam into the daily wall — mid-refactor, mid-thought. Now you're **locked out for hours**, with half-finished work and no warning.
+
+</td>
+<td width="50%">
+
+### 🛡️ With rl-guard
+
+> At 80% it quietly nudges Claude to economize. At 90% it **pauses and asks you**: keep going or stop? You decide how to spend the last slice — before it's gone, not after.
+
+</td>
+</tr>
+</table>
+
+**Same limit. You stay in control. No surprise lockouts.**
 
 ```
-statusLine ─┐  rate_limits oficial → max(5h,7d) → /tmp/claude_rl_pct
-(produtor)  │                                            │
-            ▼                                            ▼
-┌─────────────┐     ┌───────────────────────┐     ┌───────────────────────────────┐
-│ TaskCreate  │ →   │ rl-guard (PreToolUse)  │ →   │ ≥ 90% → prompt nativo ("ask") │
-│ (agente     │     │ lê /tmp/claude_rl_pct  │     │ ≥ 80% → nudge "economize"     │
-│  principal) │     │                        │     │ < 80% → libera                │
-└─────────────┘     └───────────────────────┘     └───────────────────────────────┘
+┌──────────────────────────────────────────┐
+│  SURPRISE LOCKOUTS     ░░░░░░░░   gone     │
+│  CONTROL AT THE EDGE   ████████   yours    │
+│  CONFIG REQUIRED       ░░░░░░░░   none     │
+│  RUNTIME OVERHEAD      ░░░░░░░░   ~0        │
+└──────────────────────────────────────────┘
 ```
 
-- **Bloqueia** (≥ threshold) → emite `permissionDecision:"ask"` (JSON, exit 0) → o Claude Code te pergunta nativamente: continuar ou parar?
-- **Avisa** (≥ warn, < threshold) → injeta `additionalContext` pedindo economia, sem bloquear
-- **Libera** (< warn) → tudo normal, sem saída
-- **Subagentes** são sempre liberados — só o agente principal é verificado
-- **Fail-open** → cache ausente, velho (stale) ou com valor não-inteiro → libera
+Three tiers, one knob: **allow** (`< 80%`), **warn** (`≥ 80%`), **block** (`≥ 90%`). Tune any threshold with an env var. Subagents always pass through — only the main agent gets gated.
 
-> **Nota:** o bloqueio agora usa o JSON nativo `permissionDecision:"ask"` (não mais `exit 2`). Requer uma versão do Claude Code que suporte os quatro resultados do `PreToolUse`. Em versões antigas o envelope é ignorado (fail-open).
-
-## Automático (out-of-box)
-
-A partir da v1.2 o plugin **funciona sozinho** — zero configuração. O `bin/install.sh` instala um produtor (`scripts/statusline-producer.sh`) e o liga como sua `statusLine`. Esse produtor lê o campo **oficial** `rate_limits.{five_hour,seven_day}.used_percentage` que o Claude Code já envia para a statusline, pega o `max` das duas janelas (arredondado), e escreve o inteiro em `/tmp/claude_rl_pct` — o cache que o guard consome. Nada de `ccusage`, estimativa, ou fonte sua.
-
-**Preserva sua barra.** Se você já tem uma `statusLine`, o install **não sobrescreve**: ele guarda seu comando atual num sidecar (`~/.claude/plugins/rl-guard/.statusline-inner`), e o produtor o executa por baixo, repassando o stdin e imprimindo a saída dele igualzinha. Sua barra continua aparecendo; o produtor só adiciona a escrita do cache.
-
-**Seguro e reversível.** O install faz backup do `settings.json` (`~/.claude/settings.json.rl-guard.bak`) antes de mexer, é idempotente (rodar de novo não duplica nada), e `bin/uninstall.sh` desfaz tudo — restaura sua `statusLine` original (ou remove a nossa se não havia uma) e desliga o plugin.
-
-**Fail-open quando não há `rate_limits`.** Em planos/versões que não emitem o campo (API/console, Claude Code antigo), o produtor **não escreve nada** — o cache fica stale e o guard libera (no-op), exatamente como antes. A barra continua renderizando normalmente.
-
-> **Requer `jq`** para o auto-wire (edição segura de JSON aninhado). Sem `jq`, o install não mexe no `settings.json` e imprime as instruções para você ligar a `statusLine` manualmente.
-
-## Instalação
+## Install
 
 ```bash
-# Via npm (em breve)
-npx rl-guard
-
-# Via git
 git clone https://github.com/xDisus/rl-guard.git ~/.claude/plugins/rl-guard
-claude plugin enable rl-guard
+bash ~/.claude/plugins/rl-guard/bin/install.sh
 ```
 
-Habilite no `settings.json`:
-```json
-{
-  "enabledPlugins": {
-    "rl-guard": true
-  }
-}
-```
+Then restart your Claude Code session (or tmux). That's it.
 
-Reinicie a sessão do Claude Code (ou tmux).
-
-## Configuração
-
-| Variável | Default | Descrição |
-|----------|---------|-----------|
-| `RL_GUARD_THRESHOLD` | `90` | Percentual mínimo para **bloquear** (prompt nativo) |
-| `RL_GUARD_WARN` | `80` | Percentual mínimo para **avisar** (sem bloquear) |
-| `RL_GUARD_RESET` | `12:00 BRT` | Texto do horário de reset, mostrado no prompt |
-| `RL_GUARD_STALE_MIN` | `10` | Minutos até o cache ser considerado velho (fail-open) |
+`install.sh` enables the plugin **and** wires the cache producer as your `statusLine` — so it runs the moment you restart, no config to write. Already have a statusLine? It's **preserved** (more below). Backs up `settings.json` first, idempotent, fully reversible:
 
 ```bash
-# Exemplo: bloquear só aos 95%, avisar a partir de 85%, reset em UTC
+bash ~/.claude/plugins/rl-guard/bin/uninstall.sh   # restores your statusLine, disables the plugin
+```
+
+> **Needs `jq`** for the safe nested-JSON edit of `settings.json`. No `jq`? The install leaves your settings untouched and prints the manual wiring steps — nothing breaks.
+
+## What You Get
+
+- **🚦 Native pause, not a polite suggestion.** Block fires a `permissionDecision:"ask"` envelope — Claude Code prompts *you* directly. It does not rely on the model choosing to obey an instruction.
+- **🔌 Zero config, out-of-box.** Ships its own cache producer, auto-wired as your statusLine on install. No `ccusage`, no estimates, no setup.
+- **📊 Official source of truth.** The producer reads Claude Code's own `rate_limits` field (`five_hour` + `seven_day`), takes the worst of the two, and that's your number.
+- **🪶 Preserves your bar.** Already run a custom statusLine? rl-guard runs it underneath and prints its output verbatim — your bar keeps rendering, untouched.
+- **🧬 Subagent-aware.** Only the main agent's task creation is gated. Fan-out workflows aren't punished.
+- **🟢 Fail-open by design.** Cache missing, stale, or junk → the guard does nothing. It never blocks you on bad data.
+- **↩️ Fully reversible.** `uninstall.sh` restores your original statusLine and disables the plugin. Backup written before any edit.
+- **🐚 Pure Bash.** No runtime, no compile step. `jq` is the only dependency, and it's soft.
+
+## How It Works
+
+```
+ statusLine ─┐  official rate_limits → max(5h, 7d) → /tmp/claude_rl_pct
+ (producer)  │                                              │
+             ▼                                              ▼
+┌──────────────┐    ┌─────────────────────────┐    ┌──────────────────────────────┐
+│  Task call   │ →  │  rl-guard (PreToolUse)   │ → │  ≥ 90% → native prompt ("ask")│
+│  (main agent)│    │  reads /tmp/claude_rl_pct│    │  ≥ 80% → nudge "economize"    │
+└──────────────┘    └─────────────────────────┘    │  < 80% → allow                │
+                                                    └──────────────────────────────┘
+```
+
+Two halves, one cache file:
+
+1. **The producer** (`statusline-producer.sh`) runs on every statusLine refresh. The `rate_limits` field exists *only* in the statusLine payload — never in hook stdin — so a statusLine producer is the one viable source. It extracts `max(five_hour, seven_day)` as a rounded integer (all in `jq`, since Bash has no float math) and writes it to `/tmp/claude_rl_pct`. Missing field, no `jq`, or bad input → it writes nothing and your bar still renders.
+
+2. **The guard** (`rate-limit-guard.sh`) fires on every `Task` tool call via a `PreToolUse` hook. It bypasses subagents, fails open on a missing/stale/non-integer cache, then:
+   - **`≥ threshold`** → emits `permissionDecision:"ask"` (JSON, `exit 0`) → Claude Code prompts you natively.
+   - **`≥ warn`** → injects `additionalContext` asking Claude to economize, without blocking.
+   - **otherwise** → `exit 0`, silent.
+
+The decision contract *is* the mechanism — the block is JSON + `exit 0`, never `exit 2`. So the prompt comes from Claude Code itself, not from hoping the model reads a message.
+
+## Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RL_GUARD_THRESHOLD` | `90` | Minimum percent to **block** (native prompt) |
+| `RL_GUARD_WARN` | `80` | Minimum percent to **warn** (no block) |
+| `RL_GUARD_RESET` | `12:00 BRT` | Reset-time text shown in the prompt |
+| `RL_GUARD_STALE_MIN` | `10` | Minutes until the cache is considered stale (fail-open) |
+
+```bash
+# Block only at 95%, warn from 85%, reset shown in UTC
 RL_GUARD_THRESHOLD=95 RL_GUARD_WARN=85 RL_GUARD_RESET="09:00 UTC" claude
 ```
 
-## Diagnóstico
+## Diagnostics
 
-No Claude Code, digite:
+Inside Claude Code:
 
 ```
 /rl-guard-doctor
 ```
 
-Ou rode manualmente:
+Or from a shell:
+
 ```bash
-~/.claude/plugins/rl-guard/scripts/rl-guard-doctor.sh
+bash ~/.claude/plugins/rl-guard/scripts/rl-guard-doctor.sh   # ends with no ❌ when healthy
+bash ~/.claude/plugins/rl-guard/scripts/test.sh              # full guard behavior matrix
+bash ~/.claude/plugins/rl-guard/scripts/test-statusline.sh   # producer + install/uninstall matrix
 ```
 
-Rode a matriz de testes completa:
-```bash
-bash ~/.claude/plugins/rl-guard/scripts/test.sh   # sai 0 se tudo passa
-```
+Force the block path by hand — note it's JSON + `exit 0`, not `exit 2`:
 
-Teste o bloqueio manualmente — o guard emite JSON `permissionDecision:"ask"` e sai com **exit 0** (não mais `exit 2`):
 ```bash
 echo 93 > /tmp/claude_rl_pct
 echo '{"tool_name":"Task","tool_input":{},"agent_id":""}' \
-  | ~/.claude/plugins/rl-guard/scripts/rate-limit-guard.sh
-# stdout: {"hookSpecificOutput":{...,"permissionDecision":"ask",...}}  | exit 0
+  | bash ~/.claude/plugins/rl-guard/scripts/rate-limit-guard.sh
+# stdout: {"hookSpecificOutput":{...,"permissionDecision":"ask",...}}  |  exit 0
 rm /tmp/claude_rl_pct
 ```
 
-## Estrutura
+## Project Layout
 
 ```
 ~/.claude/plugins/rl-guard/
-├── plugin.json                    — Manifesto do plugin
-├── hooks/hooks.json               — Registro do hook PreToolUse
+├── plugin.json                  — Claude Code plugin manifest
+├── hooks/hooks.json             — registers the PreToolUse hook
 ├── scripts/
-│   ├── rate-limit-guard.sh        — Script principal do guard
-│   ├── statusline-producer.sh     — Produtor: lê rate_limits oficial → cache
-│   ├── rl-guard-doctor.sh         — Script de diagnóstico
-│   ├── test.sh                    — Matriz de testes do guard
-│   └── test-statusline.sh         — Matriz de testes do produtor + wiring
+│   ├── rate-limit-guard.sh      — the guard (consumes the cache)
+│   ├── statusline-producer.sh   — the producer (writes the cache)
+│   ├── rl-guard-doctor.sh       — diagnostics
+│   ├── test.sh                  — guard behavior matrix
+│   └── test-statusline.sh       — producer + wiring matrix
 ├── bin/
-│   ├── install.sh                 — Instala + liga statusLine (preserva a sua)
-│   └── uninstall.sh               — Desfaz o wiring (reversível)
-├── commands/
-│   └── rl-guard-doctor.md         — Slash command /rl-guard-doctor
-├── .statusline-inner              — Sidecar: seu comando statusLine original
-├── README.md
-├── LICENSE
-└── package.json
+│   ├── install.sh               — install + wire statusLine (preserves yours)
+│   └── uninstall.sh             — reverse the wiring (reversible)
+├── commands/rl-guard-doctor.md  — the /rl-guard-doctor slash command
+└── package.json                 — npm distribution metadata
 ```
 
-## Licença
+## Compatibility
 
-MIT
+The block path uses the native `PreToolUse` `permissionDecision:"ask"` result. It needs a Claude Code version that supports the four `PreToolUse` outcomes; on older versions the envelope is ignored and the guard simply fails open. The `rate_limits` statusLine field ships on plans that expose it — on plans/versions without it (API/console, older Claude Code), the producer writes nothing and the guard no-ops. Nothing ever breaks; it just goes quiet.
+
+## License
+
+[MIT](LICENSE) © Renan Clementino

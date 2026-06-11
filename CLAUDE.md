@@ -52,7 +52,7 @@ Hook fires on every `Task` tool call. `hooks/hooks.json` → `scripts/rate-limit
 1. Reads tool-call JSON from **stdin**, extracts `.agent_id` via `jq`.
 2. **Subagent bypass**: if `agent_id` is non-empty, `exit 0` immediately — only the *main* agent's task creation is gated.
 3. **Fail-open guards** (each `exit 0`, no output): cache file missing; cache mtime older than `RL_GUARD_STALE_MIN` minutes (default 10); cache value not a clean integer.
-4. **Block** — if `PCT >= RL_GUARD_THRESHOLD` (default 90): emit a `permissionDecision:"ask"` JSON envelope (Portuguese reason shown to the user) and `exit 0`.
+4. **Block** — if `PCT >= RL_GUARD_THRESHOLD` (default 90): emit a `permissionDecision:"ask"` JSON envelope (English reason shown to the user) and `exit 0`.
 5. **Warn** — else if `PCT >= RL_GUARD_WARN` (default 80): emit an `additionalContext` JSON envelope (no `permissionDecision`) nudging Claude to economize, and `exit 0`.
 6. **Allow** — else `exit 0` with no output.
 
@@ -77,7 +77,7 @@ The hook **cannot self-source the percent**: `PreToolUse` stdin carries only `se
 - **Env config**: `RL_GUARD_THRESHOLD` (90), `RL_GUARD_WARN` (80), `RL_GUARD_RESET` (`12:00 BRT`), `RL_GUARD_STALE_MIN` (10). Defaults preserve v1.0 behavior except block is now `ask` instead of `exit 2`.
 - **`jq` is required for the auto-wire** (safe nested-JSON edit of `settings.json`) and for the producer's float math. Both fail open without it: no-jq install leaves `settings.json` untouched and prints manual steps; no-jq producer skips the cache write but still renders the bar.
 - **`eval` of the sidecar inner command is deliberate** — the trust boundary is the user's own `settings.json`, the same place Claude Code already reads the statusLine command from. Don't "harden" it into a brittle arg-split; preserve verbatim execution.
-- User-facing guard/README copy is **Portuguese**; code, comments, and commits are English.
+- All copy is **English** — user-facing guard prompts, README, code, comments, and commits.
 
 ## Verifying a change
 
